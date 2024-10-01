@@ -16,6 +16,8 @@ raw_dataset = pd.read_csv(url, names=column_names,
                           na_values='?', comment='\t',
                           sep=' ', skipinitialspace=True)
 
+print(raw_dataset.tail())
+
 dataset = raw_dataset.copy()
 dataset = dataset.dropna()
 
