@@ -1,121 +1,98 @@
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 
-np.set_printoptions(precision=3, suppress=True)
-pd.set_option('display.max_columns', None)
+fashion_mnist = tf.keras.datasets.fashion_mnist
+(train_images, train_labels), (test_images, test_labels) = fashion_mnist.load_data()
 
-url = 'http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data'
-column_names = ['MPG', 'Cylinders', 'Displacement', 'Horsepower', 'Weight',
-                'Acceleration', 'Model Year', 'Origin']
+class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
+               'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
 
-raw_dataset = pd.read_csv(url, names=column_names,
-                          na_values='?', comment='\t',
-                          sep=' ', skipinitialspace=True)
+plt.figure()
+plt.imshow(train_images[0])
+plt.colorbar()
+plt.grid(False)
+plt.show()
 
-print(raw_dataset.tail())
+train_images = train_images / 255.0
 
-dataset = raw_dataset.copy()
-dataset = dataset.dropna()
+test_images = test_images / 255.0
 
-dataset['Origin'] = dataset['Origin'].map({1: 'USA', 2: 'Europe', 3: 'Japan'})
-dataset = pd.get_dummies(dataset, columns=['Origin'], prefix='', prefix_sep='')
-print(dataset.describe().transpose())
+plt.figure(figsize=(10, 10))
+for i in range(25):
+    plt.subplot(5, 5, i + 1)
+    plt.xticks([])
+    plt.yticks([])
+    plt.grid(False)
+    plt.imshow(train_images[i], cmap=plt.cm.binary)
+    plt.xlabel(class_names[train_labels[i]])
+plt.show()
 
-train_dataset = dataset.sample(frac=0.8, random_state=0)
-test_dataset = dataset.drop(train_dataset.index)
-
-train_features = train_dataset.copy()
-test_features = test_dataset.copy()
-
-train_label = train_features.pop('MPG')
-test_label = test_features.pop('MPG')
-
-
-def plot(feature1, x=None, y=None):
-    plt.figure(figsize=(10, 8))
-    plt.scatter(train_features[feature1], train_label, label='Data')
-    if x is not None and y is not None:
-        plt.plot(x, y, color='k', label='Predictions')
-    plt.xlabel(feature1)
-    plt.ylabel('MPG')
-    plt.legend()
-    plt.show()
-
-
-feature = 'Horsepower'
-plot(feature)
-
-normalizer = layers.Normalization(axis=-1)
-normalizer.adapt(np.array(train_features))
-# print(normalizer.mean.numpy())
-
-# first = np.array(train_features[:1]).astype(float)
-#
-# with np.printoptions(precision=2, suppress=True):
-#     print('First example:', first)
-#     print()
-#     print('Normalized:', normalizer(first).numpy())
-
-single_feature = np.array(train_features[feature])
-
-single_feature_normalizer = layers.Normalization(input_shape=[1, ], axis=None)
-single_feature_normalizer.adapt(single_feature)
-
-single_feature_model = keras.Sequential([
-    single_feature_normalizer,
-    layers.Dense(units=1)
+model = tf.keras.Sequential([
+    tf.keras.layers.Flatten(input_shape=(28, 28)),
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dense(10)
 ])
 
-single_feature_model.summary()
+model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              metrics=['accuracy'])
 
-single_feature_model.compile(
-    optimizer=keras.optimizers.Adam(learning_rate=0.1),
-    loss='mean_absolute_error')
+model.fit(train_images, train_labels, epochs=10)
 
-history = single_feature_model.fit(
-    train_features[feature],
-    train_label,
-    epochs=100,
-    verbose=1,
-    validation_split=0.2)
+test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
 
-single_feature_model.evaluate(
-    test_features[feature],
-    test_label, verbose=1)
+print('\nTest loss:', test_loss)
+print('\nTest accuracy:', test_acc)
 
-range_min = np.min(test_features[feature]) - 10
-range_max = np.max(test_features[feature]) + 10
-x = tf.linspace(range_min, range_max, 200)
-y = single_feature_model.predict(x)
+probability_model = tf.keras.Sequential([model,
+                                         tf.keras.layers.Softmax()])
 
-plot(feature, x, y)
+predictions = probability_model.predict(test_images)
 
-# DNN
-dnn_model = keras.Sequential([
-    single_feature_normalizer,
-    layers.Dense(64, activation='relu'),
-    layers.Dense(64, activation='relu'),
-    layers.Dense(1)
-])
 
-dnn_model.compile(
-    optimizer=tf.keras.optimizers.Adam(0.001),
-    loss='mean_absolute_error')
+def plot_image(i, predictions_array, true_label, img):
+    true_label, img = true_label[i], img[i]
+    plt.grid(False)
+    plt.xticks([])
+    plt.yticks([])
 
-dnn_model.summary()
+    plt.imshow(img, cmap=plt.cm.binary)
 
-dnn_model.fit(
-    train_features[feature], train_label,
-    validation_split=0.2,
-    verbose=1, epochs=100)
+    predicted_label = np.argmax(predictions_array)
+    if predicted_label == true_label:
+        color = 'blue'
+    else:
+        color = 'red'
 
-dnn_model.evaluate(test_features[feature], test_label, verbose=1)
+    plt.xlabel("{} {:2.0f}% ({})".format(class_names[predicted_label],
+                                         100 * np.max(predictions_array),
+                                         class_names[true_label]),
+               color=color)
 
-x = tf.linspace(range_min, range_max, 200)
-y = dnn_model.predict(x)
 
-plot(feature, x, y)
+def plot_value_array(i, predictions_array, true_label):
+    true_label = true_label[i]
+    plt.grid(False)
+    plt.xticks(range(10))
+    plt.yticks([])
+    thisplot = plt.bar(range(10), predictions_array, color="#777777")
+    plt.ylim([0, 1])
+    predicted_label = np.argmax(predictions_array)
+
+    thisplot[predicted_label].set_color('red')
+    thisplot[true_label].set_color('blue')
+
+
+num_rows = 5
+num_cols = 3
+num_images = num_rows * num_cols
+plt.figure(figsize=(2 * 2 * num_cols, 2 * num_rows))
+for i in range(num_images):
+    plt.subplot(num_rows, 2 * num_cols, 2 * i + 1)
+    plot_image(i, predictions[i], test_labels, test_images)
+    plt.subplot(num_rows, 2 * num_cols, 2 * i + 2)
+    plot_value_array(i, predictions[i], test_labels)
+plt.tight_layout()
+plt.show()
